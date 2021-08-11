@@ -75,7 +75,7 @@ class HDKey(RegistryItem):
 			if self.private_key:
 				version = binascii.unhexlify('0488ADE4' if not self.use_info or self.use_info.network == 0 else '04358394')
 			else:
-				version = binascii.unhexlify('0488B21E' if not self.use_info or self.use_info.network == 0 else '043587cf')
+				version = binascii.unhexlify('0488B21E' if not self.use_info or self.use_info.network == 0 else '043587CF')
 			if self.parent_fingerprint is not None:
    				parent_fingerprint = self.parent_fingerprint
 			depth = self.origin.depth if self.origin.depth is not None else len(self.origin.components)
