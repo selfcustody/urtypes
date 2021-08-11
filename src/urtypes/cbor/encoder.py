@@ -5,17 +5,10 @@ import struct
 _str_type = type(u"")
 _bytes_type = type(b"")
 
-from .data import Tagging, Undefined
+from .data import Tagging, Mapping, Undefined
 
 class EncoderError(Exception):
 	pass
-
-class Mapping(object):
-	__slots__ = ('map')
-	def __init__(self, map):
-		self.map = map
-	def mapping(obj):
-		return Mapping(obj)
 
 class Encoder(object):
 	def __init__(self, output):
@@ -121,5 +114,5 @@ def _encode_ibyte(major, length):
 	else:
 		return None
 
-__all__ = ["Encoder", "EncoderError", "mapping"]
+__all__ = ["Encoder", "EncoderError"]
 

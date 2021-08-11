@@ -10,6 +10,7 @@ setup(
     author_email="jeffreesun@protonmail.com",
     packages=find_namespace_packages("src", include=["*"]),
     package_dir={"": "src"},
+    test_suite="tests",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
