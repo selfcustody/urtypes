@@ -18,7 +18,7 @@ class Keypath(RegistryItem):
 	
 	def path(self):
 		if not self.components:
-			return None
+			return ''
 		return '/'.join([('*' if component.wildcard else str(component.index)) + ('\'' if component.hardened else '') for component in self.components])
 	
 	def to_data_item(self):

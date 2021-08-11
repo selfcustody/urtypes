@@ -61,26 +61,46 @@ class HDKey(RegistryItem):
 		self.note = props['note'] if 'note' in props else None
 		
 	def bip32_key(self, include_derivation_path=False):
-		parent_fingerprint = bytes(4)
+		parent_fingerprint = (0).to_bytes(4, 'big')
+		source_is_parent = False
+		chain_code = self.chain_code if self.chain_code is not None else (0).to_bytes(32, 'big')
+		key = self.key
+		if len(key) == 32:
+			key = 0x00 + key
+		depth = 0
+		index = 0
 		if self.master:
 			version = binascii.unhexlify('0488ADE4' if not self.use_info or self.use_info.network == 0 else '04358394')
-			depth = 0
-			index = 0
 		else:
-			paths = self.origin.components
-			depth = len(paths)
-			last_path = paths[depth-1]
-			index = last_path.index + 0x80000000 if last_path.hardened else last_path.index
-			parent_fingerprint = self.parent_fingerprint
 			if self.private_key:
 				version = binascii.unhexlify('0488ADE4' if not self.use_info or self.use_info.network == 0 else '04358394')
 			else:
 				version = binascii.unhexlify('0488B21E' if not self.use_info or self.use_info.network == 0 else '043587cf')
+			if self.parent_fingerprint is not None:
+   				parent_fingerprint = self.parent_fingerprint
+			depth = self.origin.depth if self.origin.depth is not None else len(self.origin.components)
+			paths = self.origin.components
+			if len(paths) > 0:
+				last_path = paths[len(paths) - 1]
+				index = last_path.index
+				if last_path.hardened:
+					index += 0x80000000
+				if self.parent_fingerprint is None and self.origin.source_fingerprint is not None and len(paths) == 1:
+					parent_fingerprint = self.origin.source_fingerprint
+					source_is_parent = True
 		depth = depth.to_bytes(1, 'big')
 		index = index.to_bytes(4, 'big')
-		key = encode_check(version + depth + parent_fingerprint + index + self.chain_code + self.key)
+		key = encode_check(version + depth + parent_fingerprint + index + chain_code + key)
 		if include_derivation_path:
-			return '[%s/%s]%s%s' % (binascii.hexlify(self.origin.source_fingerprint).decode('utf-8'), self.origin.path(), key, str(len(self.children.components)) + '/' + self.children.path() if self.children else '')
+			derivation = ''
+			if self.origin and self.origin.path() and self.origin.source_fingerprint and not source_is_parent:
+				derivation = '[%s/%s]' % (binascii.hexlify(self.origin.source_fingerprint).decode('utf-8'), self.origin.path())
+
+			child_derivation = ''
+			if self.children and self.children.path():
+				child_derivation = '/' + self.children.path()
+	
+			return '%s%s%s' % (derivation, key, child_derivation)
 		return key
 	
 	def descriptor_key(self):

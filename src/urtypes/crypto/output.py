@@ -41,7 +41,7 @@ class Output(RegistryItem):
 	def registry_type(cls):
 		return CRYPTO_OUTPUT
 	
-	def descriptor(self):
+	def descriptor(self, include_checksum=True):
 		descriptor = io.StringIO()
 		
 		for script_expression in self.script_expressions:
@@ -59,7 +59,9 @@ class Output(RegistryItem):
 		d = descriptor.getvalue()
 		descriptor.close()
   
-		return d + '#' + descriptor_checksum(d)
+		if include_checksum:
+			return d + '#' + descriptor_checksum(d)
+		return d
 	
 	def hd_key(self):
 		if isinstance(self.crypto_key, HDKey):
