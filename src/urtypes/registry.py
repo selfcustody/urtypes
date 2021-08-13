@@ -58,4 +58,4 @@ class RegistryItem:
 		cbor_encoder.encode(self.to_data_item())
 		v = cbor_encoder.output.getvalue()
 		cbor_encoder.output.close()
-		return v
+		return bytearray(v)
