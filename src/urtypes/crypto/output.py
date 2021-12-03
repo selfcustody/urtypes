@@ -45,7 +45,8 @@ SCRIPT_EXPRESSION_TAG_MAP = {
 	405: ScriptExpression(405, 'combo'),
 	406: ScriptExpression(406, 'multi'),
 	407: ScriptExpression(407, 'sortedmulti'),
-	408: ScriptExpression(408, 'raw')
+	408: ScriptExpression(408, 'raw'),
+	409: ScriptExpression(409, 'tr')
 }
 
 CRYPTO_OUTPUT = RegistryType('crypto-output', 308)
