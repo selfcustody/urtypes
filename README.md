@@ -1,4 +1,4 @@
-[![codecov](https://codecov.io/gh/jreesun/urtypes/branch/main/graph/badge.svg?token=LMJZ29IHSB)](https://codecov.io/gh/jreesun/urtypes)
+[![codecov](https://codecov.io/gh/selfcustody/urtypes/branch/main/graph/badge.svg?token=LMJZ29IHSB)](https://codecov.io/gh/selfcustody/urtypes)
 
 # urtypes
 

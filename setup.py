@@ -4,7 +4,7 @@ setup(
     name="urtypes",
     version="0.1.0",
     license="MIT license",
-    url="https://github.com/jreesun/urtypes",
+    url="https://github.com/selfcustody/urtypes",
     description="Python implementation of the Blockchain Commons UR Types",
     author="Jeff S",
     author_email="jeffreesun@protonmail.com",
