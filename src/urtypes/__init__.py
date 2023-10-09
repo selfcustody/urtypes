@@ -22,3 +22,4 @@
 
 from .registry import *
 from .bytes import *
+from .crypto import *
