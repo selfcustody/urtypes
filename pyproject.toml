@@ -27,9 +27,9 @@ description = "Python implementation of the Blockchain Commons UR Types specific
 authors = ["Jeff S <jeffreesun@protonmail.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.9.1"
+python = "^3.12.3"
 
-[tool.poetry.dev.dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^6.2.5"
 pytest-mock = "^3.6.1"
 pytest-cov = "^3.0.0"
