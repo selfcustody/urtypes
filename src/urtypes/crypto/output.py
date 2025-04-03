@@ -36,6 +36,13 @@ class ScriptExpression:
     def __eq__(self, o):
         return self.tag == o.tag and self.expression == o.expression
 
+    @classmethod
+    def from_script(cls, script):
+        for script_expression in SCRIPT_EXPRESSION_TAG_MAP.values():
+            if script == script_expression.expression:
+                return script_expression
+        raise ValueError("unknown script")
+
 
 SCRIPT_EXPRESSION_TAG_MAP = {
     307: ScriptExpression(307, "addr"),
