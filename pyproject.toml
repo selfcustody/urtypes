@@ -22,9 +22,20 @@
 
 [tool.poetry]
 name = "urtypes"
-version = "0.1.0"
+version = "1.0.0"
 description = "Python implementation of the Blockchain Commons UR Types specification"
 authors = ["Jeff S <jeffreesun@protonmail.com>"]
+readme = "README.md"
+license = "MIT"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[tool.poetry.urls]
+repository = "https://github.com/selfcustody/urtypes"
+"Bug Tracker" = "https://github.com/selfcustody/urtypes/issues"
 
 [tool.poetry.dependencies]
 python = "^3.12.3"

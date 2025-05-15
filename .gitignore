@@ -11,6 +11,7 @@
 
 # Packages
 ############
+dist/
 
 # Logs and Databases
 ######################
@@ -48,3 +49,4 @@ genrst/
 .DS_Store
 
 *.egg-info
+.venv
