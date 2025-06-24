@@ -36,6 +36,10 @@ class RegistryItem:
         raise NotImplementedError()
 
     @classmethod
+    def urtype(cls):
+        return cls.registry_type().type
+
+    @classmethod
     def mapping(cls, item):
         if isinstance(item, DataItem):
             registry_type = cls.registry_type()

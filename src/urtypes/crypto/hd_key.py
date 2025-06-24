@@ -25,7 +25,7 @@ import hashlib
 from urtypes import RegistryType, RegistryItem
 from urtypes.cbor import DataItem
 from .coin_info import CoinInfo
-from .keypath import Keypath
+from .keypath import Keypath, PathComponent
 
 CRYPTO_HDKEY = RegistryType("crypto-hdkey", 303)
 
@@ -93,7 +93,7 @@ class HDKey(RegistryItem):
         )
         key = self.key
         if len(key) == 32:
-            key = 0x00 + key
+            key = bytes([0x00]) + key
         depth = 0
         index = 0
         if self.master:
@@ -117,24 +117,26 @@ class HDKey(RegistryItem):
                 )
             if self.parent_fingerprint is not None:
                 parent_fingerprint = self.parent_fingerprint
-            depth = (
-                self.origin.depth
-                if self.origin.depth is not None
-                else len(self.origin.components)
-            )
-            paths = self.origin.components
-            if len(paths) > 0:
-                last_path = paths[len(paths) - 1]
-                index = last_path.index
-                if last_path.hardened:
-                    index += 0x80000000
-                if (
-                    self.parent_fingerprint is None
-                    and self.origin.source_fingerprint is not None
-                    and len(paths) == 1
-                ):
-                    parent_fingerprint = self.origin.source_fingerprint
-                    source_is_parent = True
+
+            if self.origin:
+                depth = (
+                    self.origin.depth
+                    if self.origin.depth is not None
+                    else len(self.origin.components)
+                )
+                paths = self.origin.components
+                if len(paths) > 0:
+                    last_path = paths[len(paths) - 1]
+                    index = last_path.index
+                    if last_path.hardened:
+                        index += 0x80000000
+                    if (
+                        self.parent_fingerprint is None
+                        and self.origin.source_fingerprint is not None
+                        and len(paths) == 1
+                    ):
+                        parent_fingerprint = self.origin.source_fingerprint
+                        source_is_parent = True
         depth = depth.to_bytes(1, "big")
         index = index.to_bytes(4, "big")
         key = encode_check(
@@ -162,6 +164,87 @@ class HDKey(RegistryItem):
 
     def descriptor_key(self):
         return self.bip32_key(True)
+
+    @classmethod
+    def from_descriptor_key(cls, descriptor_key):
+        def derivation_to_components(derivation):
+            levels = derivation.split("/")
+            components = []
+            for level in levels:
+                hardened = level.endswith("'") or level.lower().endswith("h")
+                index = level[:-1] if hardened else level
+                index = None if index == "*" else int(index)
+                components.append(PathComponent(index, hardened))
+            return components
+
+        xkey = descriptor_key
+
+        origin = None
+        if "[" in descriptor_key:
+            key_origin, xkey = descriptor_key.split("]", 1)
+            key_origin = key_origin.lstrip("[")
+            source_fingerprint, derivation = key_origin.split("/", 1)
+            components = derivation_to_components(derivation)
+            if len(components) > 0:
+                origin = Keypath(
+                    components,
+                    binascii.unhexlify(source_fingerprint),
+                    len(components),
+                )
+
+        children = None
+        if "/" in xkey:
+            xkey, child_derivation = xkey.split("/", 1)
+            components = derivation_to_components(child_derivation)
+            if len(components) > 0:
+                children = Keypath(components, None, len(components))
+
+        decoded_key = decode_check(xkey)
+
+        version = decoded_key[:4]
+        depth = int(decoded_key[4])
+        parent_fingerprint = decoded_key[5:9]
+        chain_code = decoded_key[13:45]
+        key = decoded_key[45:78]
+        is_private = key[0] == 0x00
+        if is_private:
+            key = key[1:]
+
+        if origin is not None:
+            origin.depth = depth
+
+        coin_type = (
+            origin.components[1].index
+            if origin is not None and len(origin.components) > 1
+            else 0
+        )
+        coin_network = (
+            1
+            if (
+                version == binascii.unhexlify("04358394")
+                or version == binascii.unhexlify("043587CF")
+            )
+            else 0
+        )
+        use_info = CoinInfo(
+            coin_type,
+            coin_network,
+        )
+
+        is_master = parent_fingerprint == binascii.unhexlify("00000000")
+
+        return HDKey(
+            {
+                "master": is_master,
+                "key": key,
+                "chain_code": chain_code,
+                "private_key": is_private,
+                "use_info": use_info,
+                "origin": origin,
+                "children": children,
+                "parent_fingerprint": parent_fingerprint,
+            }
+        )
 
     def to_data_item(self):
         map = {}
@@ -254,6 +337,49 @@ def encode(b):
     return B58_DIGITS[0] * pad + res
 
 
+def decode(s):
+    """Decode a base58-encoding string, returning bytes"""
+    if not s:
+        return b""
+
+    # Convert the string to an integer
+    n = 0
+    for c in s:
+        n *= 58
+        if c not in B58_DIGITS:
+            raise ValueError("Character %r is not a valid base58 character" % c)
+        digit = B58_DIGITS.index(c)
+        n += digit
+
+    # Convert the integer to bytes
+    h = "%x" % n
+    if len(h) % 2:
+        h = "0" + h
+    res = binascii.unhexlify(h.encode("utf8"))
+
+    # Add padding back.
+    pad = 0
+    for c in s[:-1]:
+        if c == B58_DIGITS[0]:
+            pad += 1
+        else:
+            break
+    return b"\x00" * pad + res
+
+
 def encode_check(b):
     """Encode bytes to a base58-encoded string with a checksum"""
     return encode(b + double_sha256(b)[0:4])
+
+
+def decode_check(s):
+    """Decode a base58-encoding string with checksum check.
+    Returns bytes without checksum
+    """
+    b = decode(s)
+    checksum = double_sha256(b[:-4])[:4]
+    if b[-4:] != checksum:
+        raise ValueError(
+            "Checksum mismatch: expected %r, calculated %r" % (b[-4:], checksum)
+        )
+    return b[:-4]
