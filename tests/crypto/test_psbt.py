@@ -22,7 +22,7 @@
 
 import binascii
 from unittest import TestCase
-from urtypes.crypto import PSBT
+from urtypes.crypto.psbt import PSBT
 
 
 class PSBTTestCase(TestCase):

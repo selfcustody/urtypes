@@ -1,0 +1,21 @@
+[MESSAGES CONTROL]
+disable=
+    invalid-name,                   # C0103
+    missing-module-docstring,       # C0114
+    missing-class-docstring,        # C0115
+    missing-function-docstring,     # C0116
+    consider-using-f-string,        # C0209
+    line-too-long,                  # C0301
+    ; trailing-whitespace,            # C0303
+    import-outside-toplevel,        # C0415
+    ; unsubscriptable-object,         # E1136
+    too-many-instance-attributes,   # R0902
+    too-few-public-methods,         # R0903
+    too-many-return-statements,     # R0911
+    ; too-many-branches,              # R0912
+    ; too-many-arguments,             # R0913
+    too-many-locals,                # R0914
+    ; too-many-positional-arguments,  # R0917
+    unused-argument                 # W0613
+    ; bare-except,                    # W0702
+    ; broad-exception-raised,         # W0719

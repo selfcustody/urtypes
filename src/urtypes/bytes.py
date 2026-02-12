@@ -20,18 +20,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from urtypes import RegistryType, RegistryItem
+from .registry import RegistryType, RegistryItem
 
 BYTES = RegistryType("bytes", None)
 
 
 class Bytes(RegistryItem):
     def __init__(self, data):
-        super().__init__()
         self.data = data
-
-    def __eq__(self, o):
-        return self.data == o.data
 
     @classmethod
     def registry_type(cls):

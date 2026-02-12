@@ -20,13 +20,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import io
-from urtypes.cbor import decoder, encoder, DataItem
+from .cbor.data import DataItem
 
 
 class RegistryType:
-    def __init__(self, type, tag):
-        self.type = type
+    def __init__(self, _type, tag):
+        self.type = _type
         self.tag = tag
 
 
@@ -54,11 +53,17 @@ class RegistryItem:
 
     @classmethod
     def from_cbor(cls, cbor_payload):
-        cbor_decoder = decoder.Decoder(io.BytesIO(cbor_payload))
+        import io
+        from .cbor.decoder import Decoder
+
+        cbor_decoder = Decoder(io.BytesIO(cbor_payload))
         return cls.from_data_item(cbor_decoder.decode())
 
     def to_cbor(self):
-        cbor_encoder = encoder.Encoder(io.BytesIO())
+        import io
+        from .cbor.encoder import Encoder
+
+        cbor_encoder = Encoder(io.BytesIO())
         cbor_encoder.encode(self.to_data_item())
         v = cbor_encoder.output.getvalue()
         cbor_encoder.output.close()

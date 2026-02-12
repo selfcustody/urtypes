@@ -22,7 +22,7 @@
 
 import binascii
 from unittest import TestCase
-from urtypes.crypto import BIP39
+from urtypes.crypto.bip39 import BIP39
 
 
 class BIP39TestCase(TestCase):

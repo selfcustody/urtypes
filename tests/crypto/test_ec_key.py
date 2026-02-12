@@ -22,7 +22,7 @@
 
 import binascii
 from unittest import TestCase
-from urtypes.crypto import ECKey
+from urtypes.crypto.ec_key import ECKey
 
 
 class ECKeyTestCase(TestCase):

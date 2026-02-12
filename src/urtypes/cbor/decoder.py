@@ -23,10 +23,7 @@
 # THE SOFTWARE.
 # coding: utf-8
 
-import struct
-import math
-
-from .data import DataItem, Undefined
+from .data import DataItem
 
 
 class InvalidCborError(Exception):
@@ -35,69 +32,66 @@ class InvalidCborError(Exception):
 
 class _Break(InvalidCborError):
     def __init__(self):
-        InvalidCborError.__init__(self, "Invalid BREAK code occurred")
+        super().__init__("Invalid BREAK code occurred")
 
 
-class Decoder(object):
-    def __init__(self, input):
-        self._jump_table = [
-            lambda *args: self.decode_integer(*args, sign=False),
-            lambda *args: self.decode_integer(*args, sign=True),
-            self.decode_bytestring,
-            self.decode_textstring,
-            self.decode_list,
-            self.decode_dict,
-            self.decode_tagging,
-            self.decode_other,
-        ]
-        self.input = input
+class Decoder:
+    def __init__(self, _input):
+        self.input = _input
 
     def decode(self):
         mtype, ainfo = self._decode_ibyte()
-        try:
-            decoder = self._jump_table[mtype]
-        except KeyError:
-            raise InvalidCborError("Invalid major type {}".format(mtype))
-        return decoder(mtype, ainfo)
 
-    def decode_integer(self, mtype, ainfo, sign=False):
+        if mtype == 0:
+            return self.decode_integer(ainfo, False)
+        if mtype == 1:
+            return self.decode_integer(ainfo, True)
+        if mtype == 2:
+            return self.decode_bytestring(ainfo)
+        if mtype == 3:
+            return self.decode_textstring(ainfo)
+        if mtype == 4:
+            return self.decode_list(ainfo)
+        if mtype == 5:
+            return self.decode_dict(ainfo)
+        if mtype == 6:
+            return self.decode_tagging(ainfo)
+        if mtype == 7:
+            return self.decode_other(ainfo)
+
+        raise InvalidCborError("Invalid major type")
+
+    def decode_integer(self, ainfo, sign=False):
         res = self._decode_length(ainfo)
-        if sign is True:
+        if sign:
             return -1 - res
-        else:
-            return res
+        return res
 
-    def decode_bytestring(self, mtype, ainfo):
+    def _decode_indefinite_string(self, expected_mtype):
+        res = bytearray()
+        while True:
+            mtype, ainfo = self._decode_ibyte()
+            if mtype == 7 and ainfo == 31:
+                break
+            if mtype != expected_mtype:
+                raise InvalidCborError("Wrong chunk type")
+            chunk = self.decode_bytestring(ainfo)
+            res.extend(chunk)
+        return res
+
+    def decode_bytestring(self, ainfo):
         length = self._decode_length(ainfo)
         if length is None:
-            res = bytearray()
-            while True:
-                mtype_, ainfo_ = self._decode_ibyte()
-                if (mtype_, ainfo_) == (7, 31):
-                    break
-                if mtype_ != 2:
-                    pass
-                res.extend(self.decode_bytestring(mtype_, ainfo_))
-            return bytes(res)
-        else:
-            return self._read(length)
+            return bytes(self._decode_indefinite_string(2))
+        return self._read(length)
 
-    def decode_textstring(self, mtype, ainfo):
+    def decode_textstring(self, ainfo):
         length = self._decode_length(ainfo)
         if length is None:
-            res = bytearray()
-            while True:
-                mtype_, ainfo_ = self._decode_ibyte()
-                if (mtype_, ainfo_) == (7, 31):
-                    break
-                if mtype_ != 3:
-                    pass
-                res.extend(self.decode_bytestring(mtype_, ainfo_))
-            return res.decode("utf-8")
-        else:
-            return self._read(length).decode("utf-8")
+            return self._decode_indefinite_string(3).decode("utf-8")
+        return self._read(length).decode("utf-8")
 
-    def decode_list(self, mtype, ainfo):
+    def decode_list(self, ainfo):
         length = self._decode_length(ainfo)
         if length is None:
             res = []
@@ -107,16 +101,15 @@ class Decoder(object):
                 except _Break:
                     break
             return res
-        else:
-            res = [None for _ in range(length)]
-            for n in range(length):
-                res[n] = self.decode()
-            return res
+        res = [None] * length
+        for n in range(length):
+            res[n] = self.decode()
+        return res
 
-    def decode_dict(self, mtype, ainfo):
+    def decode_dict(self, ainfo):
         length = self._decode_length(ainfo)
+        res = {}
         if length is None:
-            res = {}
             try:
                 while True:
                     key = self.decode()
@@ -125,66 +118,72 @@ class Decoder(object):
             except _Break:
                 pass
             return res
-        else:
-            res = {}
-            for n in range(length):
-                key, value = self.decode(), self.decode()
-                res[key] = value
-            return res
+        for _ in range(length):
+            key = self.decode()
+            value = self.decode()
+            res[key] = value
+        return res
 
-    def decode_tagging(self, mtype, ainfo):
-        length = self._decode_length(ainfo)
-        return DataItem(length, self.decode())
+    def decode_tagging(self, ainfo):
+        tag = self._decode_length(ainfo)
+        return DataItem(tag, self.decode())
 
-    def decode_half_float(self, mtype, ainfo):
-        half = struct.unpack(">H", self._read(2))[0]
-        valu = (half & 0x7FFF) << 13 | (half & 0x8000) << 16
-        if (half & 0x7C00) != 0x7C00:
-            return math.ldexp(struct.unpack("!f", struct.pack("!I", valu))[0], 112)
-        return struct.unpack("!f", struct.pack("!I", valu | 0x7F800000))[0]
+    # def decode_half_float(self):
+    #     import struct
 
-    def decode_single_float(self, mtype, ainfo):
-        return struct.unpack(">f", self._read(4))[0]
+    #     half = struct.unpack(">H", self._read(2))[0]
+    #     valu = (half & 0x7FFF) << 13 | (half & 0x8000) << 16
+    #     if (half & 0x7C00) != 0x7C00:
+    #         import math
 
-    def decode_double_float(self, mtype, ainfo):
-        return struct.unpack(">d", self._read(8))[0]
+    #         return math.ldexp(struct.unpack("!f", struct.pack("!I", valu))[0], 112)
+    #     return struct.unpack("!f", struct.pack("!I", valu | 0x7F800000))[0]
 
-    def decode_other(self, mtype, ainfo):
+    # def decode_single_float(self):
+    #     import struct
+
+    #     return struct.unpack(">f", self._read(4))[0]
+
+    # def decode_double_float(self):
+    #     import struct
+
+    #     return struct.unpack(">d", self._read(8))[0]
+
+    def decode_other(self, ainfo):
         if ainfo == 20:
             return False
-        elif ainfo == 21:
+        if ainfo == 21:
             return True
-        elif ainfo == 22:
+        if ainfo == 22:
             return None
-        elif ainfo == 23:
-            return Undefined
-        elif ainfo == 25:
-            return self.decode_half_float(mtype, ainfo)
-        elif ainfo == 26:
-            return self.decode_single_float(mtype, ainfo)
-        elif ainfo == 27:
-            return self.decode_double_float(mtype, ainfo)
-        elif ainfo == 31:
-            raise _Break()
+        # if ainfo == 23:
+        #     from .data import Undefined
+
+        #     return Undefined
+        # if ainfo == 25:
+        #     return self.decode_half_float()
+        # if ainfo == 26:
+        #     return self.decode_single_float()
+        # if ainfo == 27:
+        #     return self.decode_double_float()
+        raise _Break()
 
     def _decode_ibyte(self):
         byte = self._read(1)[0]
-        if isinstance(byte, str):
-            byte = ord(byte)
-        return (byte & 0b11100000) >> 5, byte & 0b00011111
+        return (byte >> 5), (byte & 0x1F)
 
     def _decode_length(self, ainfo):
         if ainfo < 24:
             return ainfo
-        elif ainfo == 24:
-            return from_bytes(self._read(1))
-        elif ainfo == 25:
-            return from_bytes(self._read(2))
-        elif ainfo == 26:
-            return from_bytes(self._read(4))
-        elif ainfo == 27:
-            return from_bytes(self._read(8))
-        elif ainfo == 31:
+        if ainfo == 24:
+            return self._read(1)[0]
+        if ainfo == 25:
+            return int.from_bytes(self._read(2), "big")
+        if ainfo == 26:
+            return int.from_bytes(self._read(4), "big")
+        if ainfo == 27:
+            return int.from_bytes(self._read(8), "big")
+        if ainfo == 31:
             return None
         raise InvalidCborError("Invalid additional information {}".format(ainfo))
 
@@ -197,8 +196,4 @@ class Decoder(object):
         return m
 
 
-__all__ = ["InvalidCborError", "Decoder"]
-
-
-def from_bytes(val):
-    return int.from_bytes(val, "big")
+__all__ = ("InvalidCborError", "Decoder")

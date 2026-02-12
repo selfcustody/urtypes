@@ -23,128 +23,154 @@
 # THE SOFTWARE.
 # coding: utf-8
 
-import struct
-
-_str_type = type("")
-_bytes_type = type(b"")
-
-from .data import Tagging, Mapping, Undefined
+from .data import Tagging, Mapping
 
 
 class EncoderError(Exception):
     pass
 
 
-class Encoder(object):
+class Encoder:
     def __init__(self, output):
         self.output = output
 
     def encode(self, val):
-        if isinstance(val, _bytes_type):
+        if isinstance(val, bytes):
             self.encode_bytestring(val)
-        elif isinstance(val, _str_type):
+        elif isinstance(val, str):
             self.encode_textstring(val)
-        elif isinstance(val, float):
-            self.encode_float(val)
+        # elif isinstance(val, float):
+        #     self.encode_float(val)
         elif isinstance(val, bool):
             self.encode_boolean(val)
         elif isinstance(val, int):
-            self.encode_integer(val)
+            self.encode_unsigned(val)
         elif isinstance(val, list):
             self.encode_list(val)
         elif isinstance(val, dict):
             self.encode_dict(val)
         elif isinstance(val, Tagging):
             self.encode_tagging(val)
-        elif val is Undefined:
-            self.encode_undefined()
-        elif val is None:
-            self.encode_null()
+        # elif val is Undefined:
+        #     self.encode_undefined()
+        # elif val is None:
+        #     self.encode_null()
         elif isinstance(val, Mapping):
             val = val.map
             self.encode(val)
         else:
-            raise EncoderError("val of type {} is not serializable".format(type(val)))
+            raise EncoderError("Unsupported type")
 
-    def encode_list(self, list):
-        self._write(_encode_ibyte(4, len(list)))
-        for elem in list:
+    def encode_list(self, _list):
+        _write_type_and_length(self.output, 4, len(_list))
+        for elem in _list:
             self.encode(elem)
 
-    def encode_dict(self, dict):
-        self._write(_encode_ibyte(5, len(dict)))
-        for key, value in dict.items():
+    def encode_dict(self, _dict):
+        _write_type_and_length(self.output, 5, len(_dict))
+        for key, value in _dict.items():
             self.encode(key)
             self.encode(value)
 
     def encode_bytestring(self, bytestring):
-        self._write(_encode_ibyte(2, len(bytestring)))
-        self._write(bytestring)
+        _write_type_and_length(self.output, 2, len(bytestring))
+        self.output.write(bytestring)
 
     def encode_textstring(self, textstring):
         string_ = textstring.encode("utf-8")
-        self._write(_encode_ibyte(3, len(string_)))
-        self._write(string_)
+        _write_type_and_length(self.output, 3, len(string_))
+        self.output.write(string_)
 
-    def encode_float(self, float):
-        self._write(b"\xfb")
-        self._write(struct.pack(">d", float))
+    # def encode_float(self, _float):
+    #     self._write(b"\xfb")
+    #     self._write(struct.pack(">d", _float))
 
-    def encode_integer(self, integer):
-        if integer < 0:
-            integer = -integer - 1
-            try:
-                self._write(_encode_ibyte(1, integer))
-            except TypeError:
-                raise EncoderError(
-                    "Encoding integers lower than -18446744073709551616 is not supported"
-                )
-        else:
-            try:
-                self._write(_encode_ibyte(0, integer))
-            except TypeError:
-                raise EncoderError(
-                    "Encoding integers larger than 18446744073709551615 is not supported"
-                )
+    def encode_unsigned(self, value):
+        _write_type_and_length(self.output, 0, value)
+
+    # def encode_integer(self, value):
+    #     if value >= 0:
+    #         self.encode_unsigned(value)
+    #     else:
+    #         self.encode_negative(-value - 1)
+
+    # def encode_negative(self, value):
+    #     _write_type_and_length(self.output, 1, -value - 1)
 
     def encode_tagging(self, tagging):
-        try:
-            self._write(_encode_ibyte(6, tagging.tag))
-        except TypeError:
-            raise EncoderError(
-                "Encoding tag larger than 18446744073709551615 is not supported"
-            )
+        _write_type_and_length(self.output, 6, tagging.tag)
         self.encode(tagging.obj)
 
     def encode_boolean(self, boolean):
         if boolean is True:
-            self._write(_encode_ibyte(7, 21))
-        elif boolean is False:
-            self._write(_encode_ibyte(7, 20))
+            _write_type_and_length(self.output, 7, 21)
+        else:
+            _write_type_and_length(self.output, 7, 20)
 
-    def encode_null(self):
-        self._write(_encode_ibyte(7, 22))
+    # def encode_null(self):
+    #     self._write(_encode_ibyte(7, 22))
 
-    def encode_undefined(self):
-        self._write(b"\xf7")
+    # def encode_undefined(self):
+    #     self._write(b"\xf7")
 
-    def _write(self, val):
-        self.output.write(val)
-
-
-def _encode_ibyte(major, length):
-    if length < 24:
-        return struct.pack(">B", (major << 5) | length)
-    elif length < 256:
-        return struct.pack(">BB", (major << 5) | 24, length)
-    elif length < 65536:
-        return struct.pack(">BH", (major << 5) | 25, length)
-    elif length < 4294967296:
-        return struct.pack(">BI", (major << 5) | 26, length)
-    elif length < 18446744073709551616:
-        return struct.pack(">BQ", (major << 5) | 27, length)
-    else:
-        return None
+    # def _write(self, val):
+    #     self.output.write(val)
 
 
-__all__ = ["Encoder", "EncoderError"]
+def _write_type_and_length(out, major, value):
+    major <<= 5
+
+    if value < 24:  # 0 bytes payload
+        out.write(bytes((major | value,)))
+        return
+
+    if value <= 0xFF:  # 1 byte
+        out.write(bytes((major | 24, value)))
+        return
+
+    if value <= 0xFFFF:  # 2 bytes
+        out.write(
+            bytes(
+                (
+                    major | 25,
+                    (value >> 8) & 0xFF,
+                    value & 0xFF,
+                )
+            )
+        )
+        return
+
+    if value <= 0xFFFFFFFF:  # 4 bytes
+        out.write(
+            bytes(
+                (
+                    major | 26,
+                    (value >> 24) & 0xFF,
+                    (value >> 16) & 0xFF,
+                    (value >> 8) & 0xFF,
+                    value & 0xFF,
+                )
+            )
+        )
+        return
+
+    # 8 bytes
+    out.write(
+        bytes(
+            (
+                major | 27,
+                (value >> 56) & 0xFF,
+                (value >> 48) & 0xFF,
+                (value >> 40) & 0xFF,
+                (value >> 32) & 0xFF,
+                (value >> 24) & 0xFF,
+                (value >> 16) & 0xFF,
+                (value >> 8) & 0xFF,
+                value & 0xFF,
+            )
+        )
+    )
+    return
+
+
+__all__ = ("Encoder", "EncoderError")

@@ -20,45 +20,43 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from urtypes import RegistryItem
-from urtypes.cbor import DataItem
-from .hd_key import HDKey, CRYPTO_HDKEY
-from .ec_key import ECKey, CRYPTO_ECKEY
+from ..registry import RegistryItem
 
 
 class MultiKey(RegistryItem):
     def __init__(self, threshold, ec_keys, hd_keys):
-        super().__init__()
         self.threshold = threshold
         self.ec_keys = ec_keys
         self.hd_keys = hd_keys
-
-    def __eq__(self, o):
-        return (
-            self.threshold == o.threshold
-            and self.ec_keys == o.ec_keys
-            and self.hd_keys == o.hd_keys
-        )
 
     @classmethod
     def registry_type(cls):
         return None
 
     def to_data_item(self):
-        map = {}
-        map[1] = self.threshold
-        combined_keys = self.ec_keys[:] + self.hd_keys[:]
-        keys = []
-        for key in combined_keys:
-            keys.append(DataItem(key.registry_type().tag, key.to_data_item()))
-        map[2] = keys
-        return map
+        from ..cbor.data import DataItem
+
+        m = {1: self.threshold}
+        out = []
+
+        append = out.append
+
+        for k in self.ec_keys:
+            append(DataItem(k.registry_type().tag, k.to_data_item()))
+        for k in self.hd_keys:
+            append(DataItem(k.registry_type().tag, k.to_data_item()))
+
+        m[2] = out
+        return m
 
     @classmethod
     def from_data_item(cls, item):
-        map = item.map
-        threshold = map[1]
-        keys = map[2]
+        from .hd_key import HDKey, CRYPTO_HDKEY
+        from .ec_key import ECKey, CRYPTO_ECKEY
+
+        _map = item.map
+        threshold = _map[1]
+        keys = _map[2]
         ec_keys = []
         hd_keys = []
         for key in keys:

@@ -20,21 +20,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import io
-from urtypes import RegistryType, RegistryItem
-from urtypes.cbor import DataItem
-from .multi_key import MultiKey
-from .hd_key import HDKey, CRYPTO_HDKEY
-from .ec_key import ECKey
+from ..registry import RegistryType, RegistryItem
 
 
 class ScriptExpression:
     def __init__(self, tag, expression):
         self.tag = tag
         self.expression = expression
-
-    def __eq__(self, o):
-        return self.tag == o.tag and self.expression == o.expression
 
 
 SCRIPT_EXPRESSION_TAG_MAP = {
@@ -57,101 +49,120 @@ CRYPTO_OUTPUT = RegistryType("crypto-output", 308)
 
 class Output(RegistryItem):
     def __init__(self, script_expressions, crypto_key):
-        super().__init__()
         self.script_expressions = script_expressions
         self.crypto_key = crypto_key
-
-    def __eq__(self, o):
-        return (
-            self.script_expressions == o.script_expressions
-            and self.crypto_key == o.crypto_key
-        )
 
     @classmethod
     def registry_type(cls):
         return CRYPTO_OUTPUT
 
     def descriptor(self, include_checksum=True):
-        descriptor = io.StringIO()
+        from .multi_key import MultiKey
 
-        for script_expression in self.script_expressions:
-            descriptor.write(script_expression.expression + "(")
+        parts = []
 
-        if isinstance(self.crypto_key, MultiKey):
-            descriptor.write(str(self.crypto_key.threshold) + ",")
+        for se in self.script_expressions:
+            parts.append(se.expression)
+            parts.append("(")
 
-        keys = (
-            self.crypto_key.ec_keys[:] + self.crypto_key.hd_keys[:]
-            if isinstance(self.crypto_key, MultiKey)
-            else [self.crypto_key]
-        )
-        descriptor.write(",".join([key.descriptor_key() for key in keys]))
+        ck = self.crypto_key
+        if isinstance(ck, MultiKey):
+            parts.append(str(ck.threshold))
+            parts.append(",")
 
-        for _ in self.script_expressions:
-            descriptor.write(")")
+            first = True
+            for key in ck.ec_keys:
+                if not first:
+                    parts.append(",")
+                parts.append(key.descriptor_key())
+                first = False
+            for key in ck.hd_keys:
+                if not first:
+                    parts.append(",")
+                parts.append(key.descriptor_key())
+                first = False
+        else:
+            parts.append(ck.descriptor_key())
 
-        d = descriptor.getvalue()
-        descriptor.close()
+        parts.extend(")" for _ in self.script_expressions)
+
+        d = "".join(parts)
 
         if include_checksum:
             return d + "#" + descriptor_checksum(d)
         return d
 
     def hd_key(self):
-        if isinstance(self.crypto_key, HDKey):
-            return self.crypto_key
-        return None
+        from .hd_key import HDKey
+
+        ck = self.crypto_key
+        return ck if isinstance(ck, HDKey) else None
 
     def ec_key(self):
-        if isinstance(self.crypto_key, ECKey):
-            return self.crypto_key
-        return None
+        from .ec_key import ECKey
+
+        ck = self.crypto_key
+        return ck if isinstance(ck, ECKey) else None
 
     def multi_key(self):
-        if isinstance(self.crypto_key, MultiKey):
-            return self.crypto_key
-        return None
+        from .multi_key import MultiKey
+
+        ck = self.crypto_key
+        return ck if isinstance(ck, MultiKey) else None
 
     def to_data_item(self):
-        item = DataItem(None, self.crypto_key.to_data_item())
-        if self.crypto_key.registry_type() is not None:
-            item.tag = self.crypto_key.registry_type().tag
-        i = len(self.script_expressions) - 1
-        while i >= 0:
-            expression = self.script_expressions[i]
-            if item.tag is None:
-                item.tag = expression.tag
-            else:
-                item = DataItem(expression.tag, item)
+        from ..cbor.data import DataItem
+
+        ck = self.crypto_key
+        item = DataItem(None, ck.to_data_item())
+
+        rt = ck.registry_type()
+        if rt is not None:
+            item.tag = rt.tag
+
+        i = len(self.script_expressions)
+        while i:
             i -= 1
+            tag = self.script_expressions[i].tag
+            item = DataItem(tag, item) if item.tag is not None else item
+            item.tag = tag
+
         return item
 
     @classmethod
     def from_data_item(cls, item):
-        tmp_item = cls.mapping(item)
+        tmp = cls.mapping(item)
         script_expressions = []
-        while True:
-            tag = tmp_item.tag
-            if tag in SCRIPT_EXPRESSION_TAG_MAP:
-                script_expressions.append(SCRIPT_EXPRESSION_TAG_MAP[tag])
-                if isinstance(tmp_item.map, DataItem):
-                    tmp_item = tmp_item.map
-                else:
-                    break
-            else:
-                break
-        exp_len = len(script_expressions)
-        is_multi_key = exp_len > 0 and (
-            script_expressions[exp_len - 1].expression == "multi"
-            or script_expressions[exp_len - 1].expression == "sortedmulti"
-        )
-        if is_multi_key:
-            return cls(script_expressions, MultiKey.from_data_item(tmp_item))
 
-        if tmp_item.tag == CRYPTO_HDKEY.tag:
-            return cls(script_expressions, HDKey.from_data_item(tmp_item))
-        else:
-            return cls(script_expressions, ECKey.from_data_item(tmp_item))
+        while True:
+            tag = tmp.tag
+            se = SCRIPT_EXPRESSION_TAG_MAP.get(tag)
+            if se is None:
+                break
+
+            script_expressions.append(se)
+
+            m = tmp.map
+            if not hasattr(m, "tag"):
+                break
+            tmp = m
+
+        if script_expressions and script_expressions[-1].expression in (
+            "multi",
+            "sortedmulti",
+        ):
+            from .multi_key import MultiKey
+
+            return cls(script_expressions, MultiKey.from_data_item(tmp))
+
+        from .hd_key import HDKey, CRYPTO_HDKEY
+
+        if tmp.tag == CRYPTO_HDKEY.tag:
+            return cls(script_expressions, HDKey.from_data_item(tmp))
+
+        from .ec_key import ECKey
+
+        return cls(script_expressions, ECKey.from_data_item(tmp))
 
 
 def polymod(c, val):
@@ -170,11 +181,8 @@ def polymod(c, val):
     return c
 
 
-INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
-CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-
-
 def descriptor_checksum(descriptor):
+    INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
     c = 1
     cls = 0
     clscount = 0
@@ -194,6 +202,7 @@ def descriptor_checksum(descriptor):
     for _ in range(8):
         c = polymod(c, 0)
     c ^= 1
+    CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
     checksum = ""
     for i in range(8):
         checksum += CHECKSUM_CHARSET[(c >> (5 * (7 - i))) & 31]

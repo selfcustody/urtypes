@@ -20,35 +20,32 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from urtypes import RegistryType, RegistryItem
+from ..registry import RegistryType, RegistryItem
 
 CRYPTO_COIN_INFO = RegistryType("crypto-coin-info", 305)
 
 
 class CoinInfo(RegistryItem):
-    def __init__(self, type, network):
-        super().__init__()
-        self.type = type
+    def __init__(self, _type, network):
+        self.type = _type
         self.network = network
-
-    def __eq__(self, o):
-        return self.type == o.type and self.network == o.network
 
     @classmethod
     def registry_type(cls):
         return CRYPTO_COIN_INFO
 
     def to_data_item(self):
-        map = {}
+        _map = {}
         if self.type is not None:
-            map[1] = self.type
+            _map[1] = self.type
         if self.network is not None:
-            map[2] = self.network
-        return map
+            _map[2] = self.network
+        return _map
 
     @classmethod
     def from_data_item(cls, item):
-        map = cls.mapping(item)
-        type = map[1] if 1 in map else None
-        network = map[2] if 2 in map else None
-        return cls(type, network)
+        m = cls.mapping(item)
+        return cls(
+            m.get(1),  # type
+            m.get(2),  # network
+        )

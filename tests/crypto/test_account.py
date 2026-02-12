@@ -22,15 +22,10 @@
 
 import binascii
 from unittest import TestCase
-from urtypes.crypto import (
-    Account,
-    Output,
-    SCRIPT_EXPRESSION_TAG_MAP,
-    HDKey,
-    Keypath,
-    PathComponent,
-)
-
+from urtypes.crypto.account import Account
+from urtypes.crypto.output import Output, SCRIPT_EXPRESSION_TAG_MAP
+from urtypes.crypto.hd_key import HDKey
+from urtypes.crypto.keypath import Keypath, PathComponent
 
 class AccountTestCase(TestCase):
     def table(self):

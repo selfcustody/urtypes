@@ -22,15 +22,11 @@
 
 import binascii
 from unittest import TestCase
-from urtypes.crypto import (
-    Keypath,
-    PathComponent,
-    MultiKey,
-    ECKey,
-    HDKey,
-    Output,
-    SCRIPT_EXPRESSION_TAG_MAP,
-)
+from urtypes.crypto.keypath import Keypath, PathComponent
+from urtypes.crypto.multi_key import MultiKey
+from urtypes.crypto.ec_key import ECKey
+from urtypes.crypto.hd_key import HDKey
+from urtypes.crypto.output import Output, SCRIPT_EXPRESSION_TAG_MAP
 
 
 class OutputTestCase(TestCase):
@@ -199,6 +195,37 @@ class OutputTestCase(TestCase):
                 ),
                 "descriptor": "wsh(multi(1,xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/1/0/*,xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/0/*))",
                 "descriptor_checksum": "#t2zpj2eu",
+            },
+            {
+                "test": "Example/Test Vector 6 (P2PKH output from a BIP32 private key)",
+                "item": Output(
+                    [SCRIPT_EXPRESSION_TAG_MAP[403]],
+                    HDKey(
+                        {
+                            # 32-byte private key
+                            "key": binascii.unhexlify(
+                                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+                            ),
+                            "chain_code": binascii.unhexlify(
+                                "873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508"
+                            ),
+                            "origin": Keypath(
+                                [PathComponent(0, True)],
+                                binascii.unhexlify("deadbeef"),
+                                None,
+                            ),
+                            "children": Keypath(
+                                [PathComponent(None, False)],
+                                None,
+                                None,
+                            ),
+                            "parent_fingerprint": binascii.unhexlify("deadbeef"),
+                        }
+                    ),
+                ),
+                "cbor": binascii.unhexlify("d90193d9012fa5035820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f045820873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d50806d90130a2018200f5021adeadbeef07d90130a1018280f4081adeadbeef"),
+                "descriptor": "pkh([deadbeef/0']xpub69XRnZcD7W16bJcupV1V1FNFSwFaQpHodRohCmDoL6fQ4DuG4jr2PG6yA9MzNa7foj8SpkFeAhTo6TtWt5j6RSKxJ6RJTQmFiii7F1s345M/*)",
+                "descriptor_checksum": "#jvatud7p",
             },
         ]
 

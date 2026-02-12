@@ -20,85 +20,83 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from urtypes import RegistryType, RegistryItem
+from ..registry import RegistryType, RegistryItem
 
 CRYPTO_KEYPATH = RegistryType("crypto-keypath", 304)
 
 
 class Keypath(RegistryItem):
     def __init__(self, components, source_fingerprint, depth):
-        super().__init__()
         self.components = components
         self.source_fingerprint = source_fingerprint
         self.depth = depth
-
-    def __eq__(self, o):
-        return (
-            self.components == o.components
-            and self.source_fingerprint == o.source_fingerprint
-            and self.depth == o.depth
-        )
 
     @classmethod
     def registry_type(cls):
         return CRYPTO_KEYPATH
 
     def path(self):
-        if not self.components:
+        comps = self.components
+        if not comps:
             return ""
+
         return "/".join(
-            [
-                ("*" if component.wildcard else str(component.index))
-                + ("'" if component.hardened else "")
-                for component in self.components
-            ]
+            (("*" if c.wildcard else str(c.index)) + ("'" if c.hardened else ""))
+            for c in comps
         )
 
     def to_data_item(self):
-        map = {}
-        components = []
-        for component in self.components:
-            if component.wildcard:
-                components.append([])
-            else:
-                components.append(component.index)
-            components.append(component.hardened)
-        map[1] = components
-        if self.source_fingerprint is not None:
-            map[2] = int.from_bytes(self.source_fingerprint, "big")
-        if self.depth is not None:
-            map[3] = self.depth
-        return map
+        _map = {}
+        comps = self.components
+
+        out = []
+        for c in comps:
+            out.append([] if c.wildcard else c.index)
+            out.append(c.hardened)
+
+        _map[1] = out
+
+        fp = self.source_fingerprint
+        if fp is not None:
+            _map[2] = int.from_bytes(fp, "big")
+
+        d = self.depth
+        if d is not None:
+            _map[3] = d
+
+        return _map
 
     @classmethod
     def from_data_item(cls, item):
-        map = cls.mapping(item)
-        path_components = []
-        components = map[1]
-        if components:
-            for i in range(0, len(components), 2):
-                hardened = components[i + 1]
-                path = components[i]
-                if isinstance(path, int):
-                    path_components.append(PathComponent(path, hardened))
-                else:
-                    path_components.append(PathComponent(None, hardened))
-        source_fingerprint = map[2].to_bytes(4, "big") if 2 in map else None
-        depth = map[3] if 3 in map else None
-        return cls(path_components, source_fingerprint, depth)
+        m = cls.mapping(item)
+        get = m.get
+
+        raw = get(1)
+        components = []
+
+        if raw:
+            it = iter(raw)
+            for path, hardened in zip(it, it):
+                components.append(
+                    PathComponent(path if isinstance(path, int) else None, hardened)
+                )
+
+        fp = get(2)
+        if fp is not None:
+            fp = fp.to_bytes(4, "big")
+
+        return cls(
+            components,
+            fp,
+            get(3),  # depth
+        )
 
 
 class PathComponent:
     def __init__(self, index, hardened):
-        self.index = index
-        self.hardened = hardened
-        self.wildcard = self.index is None
-        if self.index and self.index & 0x80000000 != 0:
+        if index is not None and (index & 0x80000000) != 0:
             raise ValueError("Invalid index - most significant bit cannot be set")
 
-    def __eq__(self, o):
-        return (
-            self.index == o.index
-            and self.hardened == o.hardened
-            and self.wildcard == o.wildcard
-        )
+        self.index = index
+        self.hardened = hardened
+        self.wildcard = index is None

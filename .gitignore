@@ -50,3 +50,8 @@ genrst/
 
 *.egg-info
 .venv
+
+# VSCode
+settings.json
+
+.coverage

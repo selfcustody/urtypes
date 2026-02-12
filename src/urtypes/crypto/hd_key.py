@@ -21,18 +21,21 @@
 # THE SOFTWARE.
 
 import binascii
-import hashlib
-from urtypes import RegistryType, RegistryItem
-from urtypes.cbor import DataItem
-from .coin_info import CoinInfo
-from .keypath import Keypath
+from ..registry import RegistryType, RegistryItem
 
 CRYPTO_HDKEY = RegistryType("crypto-hdkey", 303)
+
+_ZERO4 = (0).to_bytes(4, "big")
+_ZERO32 = (0).to_bytes(32, "big")
+
+_XPRV = binascii.unhexlify("0488ADE4")
+_TPRV = binascii.unhexlify("04358394")
+_XPUB = binascii.unhexlify("0488B21E")
+_TPUB = binascii.unhexlify("043587CF")
 
 
 class HDKey(RegistryItem):
     def __init__(self, props):
-        super().__init__()
         self.master = None
         self.key = None
         self.chain_code = None
@@ -48,20 +51,6 @@ class HDKey(RegistryItem):
         else:
             self.setup_derive_key(props)
 
-    def __eq__(self, o):
-        return (
-            self.master == o.master
-            and self.key == o.key
-            and self.chain_code == o.chain_code
-            and self.private_key == o.private_key
-            and self.use_info == o.use_info
-            and self.origin == o.origin
-            and self.children == o.children
-            and self.parent_fingerprint == o.parent_fingerprint
-            and self.name == o.name
-            and self.note == o.note
-        )
-
     @classmethod
     def registry_type(cls):
         return CRYPTO_HDKEY
@@ -73,177 +62,174 @@ class HDKey(RegistryItem):
 
     def setup_derive_key(self, props):
         self.master = False
-        self.key = props["key"] if "key" in props else None
-        self.chain_code = props["chain_code"] if "chain_code" in props else None
-        self.private_key = props["private_key"] if "private_key" in props else None
-        self.use_info = props["use_info"] if "use_info" in props else None
-        self.origin = props["origin"] if "origin" in props else None
-        self.children = props["children"] if "children" in props else None
-        self.parent_fingerprint = (
-            props["parent_fingerprint"] if "parent_fingerprint" in props else None
-        )
-        self.name = props["name"] if "name" in props else None
-        self.note = props["note"] if "note" in props else None
+        get = props.get
+        self.key = get("key")
+        self.chain_code = get("chain_code")
+        self.private_key = get("private_key")
+        self.use_info = get("use_info")
+        self.origin = get("origin")
+        self.children = get("children")
+        self.parent_fingerprint = get("parent_fingerprint")
+        self.name = get("name")
+        self.note = get("note")
 
     def bip32_key(self, include_derivation_path=False):
-        parent_fingerprint = (0).to_bytes(4, "big")
-        source_is_parent = False
-        chain_code = (
-            self.chain_code if self.chain_code is not None else (0).to_bytes(32, "big")
-        )
+        parent_fp = self.parent_fingerprint or _ZERO4
+        chain = self.chain_code or _ZERO32
         key = self.key
         if len(key) == 32:
-            key = 0x00 + key
+            key = b"\x00" + key
+
         depth = 0
         index = 0
+        source_is_parent = False
+
         if self.master:
-            version = binascii.unhexlify(
-                "0488ADE4"
-                if not self.use_info or self.use_info.network == 0
-                else "04358394"
+            version = (
+                _XPRV if not self.use_info or self.use_info.network == 0 else _TPRV
             )
         else:
             if self.private_key:
-                version = binascii.unhexlify(
-                    "0488ADE4"
-                    if not self.use_info or self.use_info.network == 0
-                    else "04358394"
+                version = (
+                    _XPRV if not self.use_info or self.use_info.network == 0 else _TPRV
                 )
             else:
-                version = binascii.unhexlify(
-                    "0488B21E"
-                    if not self.use_info or self.use_info.network == 0
-                    else "043587CF"
+                version = (
+                    _XPUB if not self.use_info or self.use_info.network == 0 else _TPUB
                 )
-            if self.parent_fingerprint is not None:
-                parent_fingerprint = self.parent_fingerprint
-            depth = (
-                self.origin.depth
-                if self.origin.depth is not None
-                else len(self.origin.components)
-            )
-            paths = self.origin.components
-            if len(paths) > 0:
-                last_path = paths[len(paths) - 1]
-                index = last_path.index
-                if last_path.hardened:
-                    index += 0x80000000
-                if (
-                    self.parent_fingerprint is None
-                    and self.origin.source_fingerprint is not None
-                    and len(paths) == 1
-                ):
-                    parent_fingerprint = self.origin.source_fingerprint
-                    source_is_parent = True
-        depth = depth.to_bytes(1, "big")
-        index = index.to_bytes(4, "big")
-        key = encode_check(
-            version + depth + parent_fingerprint + index + chain_code + key
+
+            origin = self.origin
+            if origin:
+                depth = (
+                    origin.depth if origin.depth is not None else len(origin.components)
+                )
+                paths = origin.components
+                if paths:
+                    last = paths[-1]
+                    index = last.index + (0x80000000 if last.hardened else 0)
+                    if (
+                        self.parent_fingerprint is None
+                        and origin.source_fingerprint
+                        and len(paths) == 1
+                    ):
+                        parent_fp = origin.source_fingerprint
+                        source_is_parent = True
+
+        payload = (
+            version
+            + depth.to_bytes(1, "big")
+            + parent_fp
+            + index.to_bytes(4, "big")
+            + chain
+            + key
         )
-        if include_derivation_path:
-            derivation = ""
-            if (
-                self.origin
-                and self.origin.path()
-                and self.origin.source_fingerprint
-                and not source_is_parent
-            ):
-                derivation = "[%s/%s]" % (
-                    binascii.hexlify(self.origin.source_fingerprint).decode("utf-8"),
-                    self.origin.path(),
-                )
 
-            child_derivation = ""
-            if self.children and self.children.path():
-                child_derivation = "/" + self.children.path()
+        encoded = encode_check(payload)  # key
 
-            return "%s%s%s" % (derivation, key, child_derivation)
-        return key
+        if not include_derivation_path:
+            return encoded
+
+        deriv = ""
+        if (
+            self.origin
+            and self.origin.path()
+            and self.origin.source_fingerprint
+            and not source_is_parent
+        ):
+            deriv = "[%s/%s]" % (
+                binascii.hexlify(self.origin.source_fingerprint).decode("utf-8"),
+                self.origin.path(),
+            )
+
+        child = ""
+        if self.children and self.children.path():
+            child = "/" + self.children.path()
+
+        return deriv + encoded + child
 
     def descriptor_key(self):
         return self.bip32_key(True)
 
     def to_data_item(self):
-        map = {}
+        _map = {}
         if self.master:
-            map[1] = True
-            map[3] = self.key
-            map[4] = self.chain_code
-        else:
-            if self.private_key is not None:
-                map[2] = self.private_key
-            map[3] = self.key
+            _map[1] = True
+            _map[3] = self.key
             if self.chain_code is not None:
-                map[4] = self.chain_code
-            if self.use_info is not None:
-                map[5] = DataItem(
-                    self.use_info.registry_type().tag, self.use_info.to_data_item()
-                )
-            if self.origin is not None:
-                map[6] = DataItem(
-                    self.origin.registry_type().tag, self.origin.to_data_item()
-                )
-            if self.children is not None:
-                map[7] = DataItem(
-                    self.children.registry_type().tag, self.children.to_data_item()
-                )
-            if self.parent_fingerprint is not None:
-                map[8] = int.from_bytes(self.parent_fingerprint, "big")
-            if self.name is not None:
-                map[9] = self.name
-            if self.note is not None:
-                map[10] = self.note
-        return map
+                _map[4] = self.chain_code
+            return _map
+
+        from ..cbor.data import DataItem
+
+        if self.private_key is not None:
+            _map[2] = self.private_key
+        _map[3] = self.key
+
+        if self.chain_code is not None:
+            _map[4] = self.chain_code
+        if self.use_info is not None:
+            _map[5] = DataItem(
+                self.use_info.registry_type().tag, self.use_info.to_data_item()
+            )
+        if self.origin is not None:
+            _map[6] = DataItem(
+                self.origin.registry_type().tag, self.origin.to_data_item()
+            )
+        if self.children is not None:
+            _map[7] = DataItem(
+                self.children.registry_type().tag, self.children.to_data_item()
+            )
+        if self.parent_fingerprint is not None:
+            _map[8] = int.from_bytes(self.parent_fingerprint, "big")
+        if self.name is not None:
+            _map[9] = self.name
+        if self.note is not None:
+            _map[10] = self.note
+
+        return _map
 
     @classmethod
     def from_data_item(cls, item):
-        map = cls.mapping(item)
-        master = 1 in map and map[1]
-        private_key = map[2] if 2 in map else None
-        key = map[3] if 3 in map else None
-        chain_code = map[4] if 4 in map else None
-        use_info = CoinInfo.from_data_item(map[5]) if 5 in map else None
-        origin = Keypath.from_data_item(map[6]) if 6 in map else None
-        children = Keypath.from_data_item(map[7]) if 7 in map else None
-        parent_fingerprint = map[8].to_bytes(4, "big") if 8 in map else None
-        name = map[9] if 9 in map else None
-        note = map[10] if 10 in map else None
+        from .coin_info import CoinInfo
+        from .keypath import Keypath
+
+        m = cls.mapping(item)
+        get = m.get
+
         return cls(
             {
-                "master": master,
-                "private_key": private_key,
-                "key": key,
-                "chain_code": chain_code,
-                "use_info": use_info,
-                "origin": origin,
-                "children": children,
-                "parent_fingerprint": parent_fingerprint,
-                "name": name,
-                "note": note,
+                "master": bool(get(1)),
+                "private_key": get(2),
+                "key": get(3),
+                "chain_code": get(4),
+                "use_info": CoinInfo.from_data_item(get(5)) if 5 in m else None,
+                "origin": Keypath.from_data_item(get(6)) if 6 in m else None,
+                "children": Keypath.from_data_item(get(7)) if 7 in m else None,
+                "parent_fingerprint": get(8).to_bytes(4, "big") if 8 in m else None,
+                "name": get(9),
+                "note": get(10),
             }
         )
 
 
-B58_DIGITS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-
-
 def double_sha256(msg):
     """sha256(sha256(msg)) -> bytes"""
+    import hashlib
+
     return hashlib.sha256(hashlib.sha256(msg).digest()).digest()
 
 
 def encode(b):
     """Encode bytes to a base58-encoded string"""
 
-    # Convert big-endian bytes to integer
-    n = int("0x0" + binascii.hexlify(b).decode("utf8"), 16)
+    B58_DIGITS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
-    # Divide that integer into bas58
+    n = int.from_bytes(b, "big")
     res = []
-    while n > 0:
+    while n:
         n, r = divmod(n, 58)
         res.append(B58_DIGITS[r])
-    res = "".join(res[::-1])
+    res.reverse()
 
     pad = 0
     for c in b:
@@ -251,9 +237,10 @@ def encode(b):
             pad += 1
         else:
             break
-    return B58_DIGITS[0] * pad + res
+
+    return B58_DIGITS[0] * pad + "".join(res)
 
 
 def encode_check(b):
     """Encode bytes to a base58-encoded string with a checksum"""
-    return encode(b + double_sha256(b)[0:4])
+    return encode(b + double_sha256(b)[:4])

@@ -22,7 +22,9 @@
 
 import binascii
 from unittest import TestCase
-from urtypes.crypto import HDKey, CoinInfo, Keypath, PathComponent
+from urtypes.crypto.hd_key import HDKey
+from urtypes.crypto.coin_info import CoinInfo
+from urtypes.crypto.keypath import Keypath, PathComponent
 
 
 class HDKeyTestCase(TestCase):
